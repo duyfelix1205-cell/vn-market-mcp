@@ -1,0 +1,41 @@
+# Linux VPS only: host networking matches the existing pipeline stack.
+name: vn-market-remote
+services:
+  mcp:
+    build:
+      context: ../..
+      dockerfile: infrastructure/remote/Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      MCP_API_TOKEN: ${MCP_API_TOKEN:?Set MCP_API_TOKEN}
+      MCP_PUBLIC_URL: https://${MCP_DOMAIN:?Set MCP_DOMAIN}/mcp
+      MCP_RO_DATABASE_URL: ${MCP_RO_DATABASE_URL:?Set MCP_RO_DATABASE_URL}
+      PGCONNECT_TIMEOUT: "5"
+      PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=15000"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  caddy:
+    image: caddy:2
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      MCP_DOMAIN: ${MCP_DOMAIN:?Set MCP_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      mcp:
+        condition: service_healthy
+volumes:
+  caddy_data:
+  caddy_config:
